@@ -28,8 +28,23 @@ func main() {
 		content, err := plumbing.CatFile(objHash)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 		fmt.Print(content)
+
+	case "hash-object":
+		isWrite := os.Args[2] == "-w"
+		path := os.Args[2]
+		if isWrite {
+			path = os.Args[3]
+		}
+
+		hash, err := plumbing.HashObject(path, isWrite)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Print(hash)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %s\n", command)

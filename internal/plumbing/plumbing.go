@@ -2,9 +2,11 @@ package plumbing
 
 import (
 	"compress/zlib"
+	"crypto/sha1"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -44,11 +46,41 @@ func CatFile(objHash string) (string, error) {
 
 	content, err := io.ReadAll(r)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading file: %s\n", err)
 		return "", fmt.Errorf("error reading file: %w", err)
 	}
 
 	// blob object format: blob <size>\x00<content>
 	parts := strings.Split(string(content), "\x00")
 	return parts[1], nil
+}
+
+func HashObject(path string, isWrite bool) (string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("error reading file: %w", err)
+	}
+
+	object := fmt.Sprintf("blob %d\x00%s", len(content), content)
+	hash := fmt.Sprintf("%x", sha1.Sum([]byte(object)))
+
+	if isWrite {
+		path := fmt.Sprintf("%s/objects/%s/%s", GIT_DIR, hash[:2], hash[2:])
+
+		err = os.MkdirAll(filepath.Dir(path), os.ModePerm)
+		if err != nil {
+			return "", fmt.Errorf("error creating directory: %w", err)
+		}
+
+		file, err := os.Create(path)
+		if err != nil {
+			return "", fmt.Errorf("error creating file: %w", err)
+		}
+		defer file.Close()
+
+		w := zlib.NewWriter(file)
+		w.Write([]byte(object))
+		w.Close()
+	}
+
+	return hash, nil
 }
