@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -23,9 +24,18 @@ func main() {
 		}
 
 	case "cat-file":
-		objHash := os.Args[3]
+		os.Args = os.Args[1:]
 
-		content, err := plumbing.CatFile(objHash)
+		var print bool
+		flag.BoolVar(&print, "p", false, "Print the contents of the object")
+		flag.Parse()
+
+		if !print {
+			fmt.Println("usage: mygit cat-file -p <hash>")
+			os.Exit(1)
+		}
+
+		content, err := plumbing.CatFile(flag.Arg(0))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -33,18 +43,32 @@ func main() {
 		fmt.Print(content)
 
 	case "hash-object":
-		isWrite := os.Args[2] == "-w"
-		path := os.Args[2]
-		if isWrite {
-			path = os.Args[3]
-		}
+		os.Args = os.Args[1:]
 
-		hash, err := plumbing.HashObject(path, isWrite)
+		var write bool
+		flag.BoolVar(&write, "w", false, "Write the object to the objects directory")
+		flag.Parse()
+
+		hash, err := plumbing.HashObject(flag.Arg(0), write)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		fmt.Print(hash)
+
+	case "ls-tree":
+		os.Args = os.Args[1:]
+
+		var nameOnly bool
+		flag.BoolVar(&nameOnly, "name-only", false, "List only the names of the tree object")
+		flag.Parse()
+
+		tree, err := plumbing.LsTree(flag.Arg(0), nameOnly)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Print(tree)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %s\n", command)
