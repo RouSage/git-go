@@ -94,7 +94,7 @@ func LsTree(objHash string, nameOnly bool) (string, error) {
 		if nameOnly {
 			output += fmt.Sprintln(entry.name)
 		} else {
-			output += fmt.Sprintf("%d %s %s\t%s\n", entry.mode, entryType(entry.mode), entry.hash, entry.name)
+			output += fmt.Sprintf("%06d %s %s\t%s\n", entry.mode, entryType(entry.mode), entry.hash, entry.name)
 		}
 	}
 
