@@ -165,7 +165,7 @@ func WriteTree() (string, error) {
 		return "", fmt.Errorf("error getting the current directory: %w", err)
 	}
 
-	treeSha, _, err := treeHash(dir)
+	treeSha, err := treeHash(dir)
 	if err != nil {
 		return "", err
 	}
@@ -173,12 +173,12 @@ func WriteTree() (string, error) {
 	return hex.EncodeToString(treeSha), nil
 }
 
-func treeHash(dir string) ([]byte, []byte, error) {
+func treeHash(dir string) ([]byte, error) {
 	var entries []treeEntry
 
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error reading the directory %q: %w", dir, err)
+		return nil, fmt.Errorf("error reading the directory %q: %w", dir, err)
 	}
 
 	for _, dirEntry := range dirEntries {
@@ -187,9 +187,9 @@ func treeHash(dir string) ([]byte, []byte, error) {
 		}
 
 		if dirEntry.IsDir() {
-			treeHash, _, err := treeHash(filepath.Join(dir, dirEntry.Name()))
+			treeHash, err := treeHash(filepath.Join(dir, dirEntry.Name()))
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 
 			entry := treeEntry{
@@ -201,12 +201,12 @@ func treeHash(dir string) ([]byte, []byte, error) {
 		} else {
 			content, err := os.ReadFile(filepath.Join(dir, dirEntry.Name()))
 			if err != nil {
-				return nil, nil, fmt.Errorf("error reading file: %w", err)
+				return nil, fmt.Errorf("error reading file: %w", err)
 			}
 
 			fileObject, fileHash := hashObject("blob", content)
 			if err := writeGitObject(hex.EncodeToString(fileHash), []byte(fileObject)); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 
 			entry := treeEntry{
@@ -237,10 +237,10 @@ func treeHash(dir string) ([]byte, []byte, error) {
 	treeSha := sha.Sum(nil)
 
 	if err := writeGitObject(hex.EncodeToString(treeSha), []byte(object)); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return treeSha, []byte(object), nil
+	return treeSha, nil
 }
 
 func entryType(mode treeEntryMode) string {
