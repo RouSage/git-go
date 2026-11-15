@@ -173,7 +173,6 @@ func WriteTree() (string, error) {
 		return "", err
 	}
 
-	fmt.Println(string(object))
 	hash := hex.EncodeToString(treeSha)
 	err = writeGitObject(hash, object)
 	if err != nil {
@@ -236,10 +235,10 @@ func treeHash(dir string) ([]byte, []byte, error) {
 	for _, entry := range entries {
 		b = append(b, entry.Hash()...)
 	}
-	sh := sha1.New()
-	io.WriteString(sh, object)
+	sha := sha1.New()
+	io.WriteString(sha, object)
 
-	return sh.Sum(nil), b, nil
+	return sha.Sum(nil), b, nil
 }
 
 func entryType(mode treeEntryMode) string {
