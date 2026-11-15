@@ -48,23 +48,23 @@ func CatFile(objHash string) (string, error) {
 	return parts[1], nil
 }
 
-func HashObject(file string, write bool) (string, int, error) {
+func HashObject(file string, write bool) (string, error) {
 	content, err := os.ReadFile(file)
 	if err != nil {
-		return "", 0, fmt.Errorf("error reading file: %w", err)
+		return "", fmt.Errorf("error reading file: %w", err)
 	}
 
-	object, sha, size := hashObject("blob", content)
+	object, sha := hashObject("blob", content)
 	hash := fmt.Sprintf("%x", sha)
 
 	if write {
 		err := writeGitObject(hash, []byte(object))
 		if err != nil {
-			return "", 0, err
+			return "", err
 		}
 	}
 
-	return hash, size, nil
+	return hash, nil
 }
 
 type treeEntryMode int
@@ -214,7 +214,7 @@ func treeHash(dir string) ([]byte, []byte, error) {
 			if err != nil {
 				return nil, nil, fmt.Errorf("error reading file: %w", err)
 			}
-			_, fileHash, fileSize := hashObject("blob", content)
+			fileObject, fileHash := hashObject("blob", content)
 
 			entry := treeEntry{
 				mode: modeRegularFile,
@@ -222,7 +222,7 @@ func treeHash(dir string) ([]byte, []byte, error) {
 				hash: string(fileHash),
 			}
 			entries = append(entries, entry)
-			size += fileSize
+			size += len(fileObject)
 		}
 	}
 
@@ -250,14 +250,14 @@ func entryType(mode treeEntryMode) string {
 	}
 }
 
-func hashObject(objType string, content []byte) (string, []byte, int) {
+func hashObject(objType string, content []byte) (string, []byte) {
 	size := len(content)
 	object := fmt.Sprintf("%s %d\x00%s", objType, size, content)
 
 	sha := sha1.New()
 	io.WriteString(sha, object)
 
-	return object, sha.Sum(nil), len(object)
+	return object, sha.Sum(nil)
 }
 
 func readGitObject(objHash string) ([]byte, error) {
