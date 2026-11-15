@@ -82,13 +82,13 @@ type treeEntry struct {
 	hash string
 }
 
-func (t treeEntry) Hash() []byte {
-	object := fmt.Sprintf("%s %s\x00%s", t.mode, t.name, t.hash)
+func (t treeEntry) Hash() (string, []byte) {
+	object := fmt.Sprintf("%d %s\x00%s", t.mode, t.name, t.hash)
 
 	sha := sha1.New()
 	io.WriteString(sha, object)
 
-	return sha.Sum(nil)
+	return object, sha.Sum(nil)
 }
 
 func LsTree(objHash string, nameOnly bool) (string, error) {
@@ -231,14 +231,14 @@ func treeHash(dir string) ([]byte, []byte, error) {
 	})
 
 	object := fmt.Sprintf("tree %d\x00", size)
-	b := []byte(object)
 	for _, entry := range entries {
-		b = append(b, entry.Hash()...)
+		obj, _ := entry.Hash()
+		object += obj
 	}
 	sha := sha1.New()
 	io.WriteString(sha, object)
 
-	return sha.Sum(nil), b, nil
+	return sha.Sum(nil), []byte(object), nil
 }
 
 func entryType(mode treeEntryMode) string {
