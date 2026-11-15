@@ -184,7 +184,6 @@ func WriteTree() (string, error) {
 
 func treeHash(dir string) ([]byte, []byte, error) {
 	var entries []treeEntry
-	size := 0
 
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
@@ -208,13 +207,12 @@ func treeHash(dir string) ([]byte, []byte, error) {
 				hash: string(treeHash),
 			}
 			entries = append(entries, entry)
-			size += len(treeHash)
 		} else {
 			content, err := os.ReadFile(filepath.Join(dir, dirEntry.Name()))
 			if err != nil {
 				return nil, nil, fmt.Errorf("error reading file: %w", err)
 			}
-			fileObject, fileHash := hashObject("blob", content)
+			_, fileHash := hashObject("blob", content)
 
 			entry := treeEntry{
 				mode: modeRegularFile,
@@ -222,7 +220,6 @@ func treeHash(dir string) ([]byte, []byte, error) {
 				hash: string(fileHash),
 			}
 			entries = append(entries, entry)
-			size += len(fileObject)
 		}
 	}
 
@@ -230,11 +227,14 @@ func treeHash(dir string) ([]byte, []byte, error) {
 		return entries[i].name < entries[j].name
 	})
 
-	object := fmt.Sprintf("tree %d\x00", size)
+	size := 0
+	object := ""
 	for _, entry := range entries {
 		obj, _ := entry.Hash()
+		size += len(obj)
 		object += obj
 	}
+	object = fmt.Sprintf("tree %d\x00%s", size, object)
 	sha := sha1.New()
 	io.WriteString(sha, object)
 
