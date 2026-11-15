@@ -58,22 +58,10 @@ func HashObject(file string, write bool) (string, int, error) {
 	hash := fmt.Sprintf("%x", sha)
 
 	if write {
-		path := path.Join(GIT_DIR, GIT_OBJECTS, hash[:2], hash[2:])
-
-		err = os.MkdirAll(filepath.Dir(path), os.ModePerm)
+		err := writeGitObject(hash, []byte(object))
 		if err != nil {
-			return "", 0, fmt.Errorf("error creating directory: %w", err)
+			return "", 0, err
 		}
-
-		file, err := os.Create(path)
-		if err != nil {
-			return "", 0, fmt.Errorf("error creating file: %w", err)
-		}
-		defer file.Close()
-
-		w := zlib.NewWriter(file)
-		w.Write([]byte(object))
-		w.Close()
 	}
 
 	return hash, size, nil
@@ -180,21 +168,28 @@ func WriteTree() (string, error) {
 		return "", fmt.Errorf("error getting the current directory: %w", err)
 	}
 
-	entries, err := treeHash(dir)
+	treeSha, object, err := treeHash(dir)
 	if err != nil {
 		return "", err
 	}
 
-	return fmt.Sprintf("%x", entries), nil
+	fmt.Println(string(object))
+	hash := hex.EncodeToString(treeSha)
+	err = writeGitObject(hash, object)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", treeSha), nil
 }
 
-func treeHash(dir string) ([]byte, error) {
+func treeHash(dir string) ([]byte, []byte, error) {
 	var entries []treeEntry
 	size := 0
 
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("error reading the directory %q: %w", dir, err)
+		return nil, nil, fmt.Errorf("error reading the directory %q: %w", dir, err)
 	}
 
 	for _, dirEntry := range dirEntries {
@@ -203,9 +198,9 @@ func treeHash(dir string) ([]byte, error) {
 		}
 
 		if dirEntry.IsDir() {
-			treeHash, err := treeHash(filepath.Join(dir, dirEntry.Name()))
+			treeHash, _, err := treeHash(filepath.Join(dir, dirEntry.Name()))
 			if err != nil {
-				return nil, nil
+				return nil, nil, err
 			}
 
 			entry := treeEntry{
@@ -218,7 +213,7 @@ func treeHash(dir string) ([]byte, error) {
 		} else {
 			content, err := os.ReadFile(filepath.Join(dir, dirEntry.Name()))
 			if err != nil {
-				return nil, fmt.Errorf("error reading file: %w", err)
+				return nil, nil, fmt.Errorf("error reading file: %w", err)
 			}
 			_, fileHash, fileSize := hashObject("blob", content)
 
@@ -237,13 +232,14 @@ func treeHash(dir string) ([]byte, error) {
 	})
 
 	object := fmt.Sprintf("tree %d\x00", size)
+	b := []byte(object)
 	for _, entry := range entries {
-		object += string(entry.Hash())
+		b = append(b, entry.Hash()...)
 	}
 	sh := sha1.New()
 	io.WriteString(sh, object)
 
-	return sh.Sum(nil), nil
+	return sh.Sum(nil), b, nil
 }
 
 func entryType(mode treeEntryMode) string {
@@ -288,4 +284,31 @@ func readGitObject(objHash string) ([]byte, error) {
 	}
 
 	return content, nil
+}
+
+func writeGitObject(objHash string, object []byte) error {
+	hashPrefix := objHash[:2]
+	hashSuffix := objHash[2:]
+
+	path := path.Join(GIT_DIR, GIT_OBJECTS, hashPrefix, hashSuffix)
+
+	err := os.MkdirAll(filepath.Dir(path), os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("error creating directory: %w", err)
+	}
+
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("error creating file: %w", err)
+	}
+	defer file.Close()
+
+	w := zlib.NewWriter(file)
+	_, err = w.Write(object)
+	if err != nil {
+		return fmt.Errorf("error writing git object: %w", err)
+	}
+	w.Close()
+
+	return nil
 }
