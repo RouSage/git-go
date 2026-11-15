@@ -49,7 +49,7 @@ func main() {
 		flag.BoolVar(&write, "w", false, "Write the object to the objects directory")
 		flag.Parse()
 
-		hash, err := plumbing.HashObject(flag.Arg(0), write)
+		hash, _, err := plumbing.HashObject(flag.Arg(0), write)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -69,6 +69,14 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Print(tree)
+
+	case "write-tree":
+		treeHash, err := plumbing.WriteTree()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Print(treeHash)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %s\n", command)

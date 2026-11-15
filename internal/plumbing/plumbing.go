@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -47,26 +48,26 @@ func CatFile(objHash string) (string, error) {
 	return parts[1], nil
 }
 
-func HashObject(file string, write bool) (string, error) {
+func HashObject(file string, write bool) (string, int, error) {
 	content, err := os.ReadFile(file)
 	if err != nil {
-		return "", fmt.Errorf("error reading file: %w", err)
+		return "", 0, fmt.Errorf("error reading file: %w", err)
 	}
 
-	object := fmt.Sprintf("blob %d\x00%s", len(content), content)
-	hash := fmt.Sprintf("%x", sha1.Sum([]byte(object)))
+	object, sha, size := hashObject("blob", content)
+	hash := fmt.Sprintf("%x", sha)
 
 	if write {
 		path := path.Join(GIT_DIR, GIT_OBJECTS, hash[:2], hash[2:])
 
 		err = os.MkdirAll(filepath.Dir(path), os.ModePerm)
 		if err != nil {
-			return "", fmt.Errorf("error creating directory: %w", err)
+			return "", 0, fmt.Errorf("error creating directory: %w", err)
 		}
 
 		file, err := os.Create(path)
 		if err != nil {
-			return "", fmt.Errorf("error creating file: %w", err)
+			return "", 0, fmt.Errorf("error creating file: %w", err)
 		}
 		defer file.Close()
 
@@ -75,7 +76,31 @@ func HashObject(file string, write bool) (string, error) {
 		w.Close()
 	}
 
-	return hash, nil
+	return hash, size, nil
+}
+
+type treeEntryMode int
+
+const (
+	modeRegularFile    treeEntryMode = 100644
+	modeExecutableFile treeEntryMode = 100755
+	modeSymLink        treeEntryMode = 120000
+	modeDirectory      treeEntryMode = 40000
+)
+
+type treeEntry struct {
+	mode treeEntryMode
+	name string
+	hash string
+}
+
+func (t treeEntry) Hash() []byte {
+	object := fmt.Sprintf("%s %s\x00%s", t.mode, t.name, t.hash)
+
+	sha := sha1.New()
+	io.WriteString(sha, object)
+
+	return sha.Sum(nil)
 }
 
 func LsTree(objHash string, nameOnly bool) (string, error) {
@@ -99,21 +124,6 @@ func LsTree(objHash string, nameOnly bool) (string, error) {
 	}
 
 	return output, nil
-}
-
-type treeEntryMode int
-
-const (
-	modeRegularFile    treeEntryMode = 100644
-	modeExecutableFile treeEntryMode = 100755
-	modeSymLink        treeEntryMode = 120000
-	modeDirectory      treeEntryMode = 40000
-)
-
-type treeEntry struct {
-	mode treeEntryMode
-	name string
-	hash string
 }
 
 func parseTree(data []byte) ([]treeEntry, error) {
@@ -164,6 +174,78 @@ func parseTree(data []byte) ([]treeEntry, error) {
 	return entries, nil
 }
 
+func WriteTree() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("error getting the current directory: %w", err)
+	}
+
+	entries, err := treeHash(dir)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", entries), nil
+}
+
+func treeHash(dir string) ([]byte, error) {
+	var entries []treeEntry
+	size := 0
+
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading the directory %q: %w", dir, err)
+	}
+
+	for _, dirEntry := range dirEntries {
+		if dirEntry.Name() == ".git" {
+			continue
+		}
+
+		if dirEntry.IsDir() {
+			treeHash, err := treeHash(filepath.Join(dir, dirEntry.Name()))
+			if err != nil {
+				return nil, nil
+			}
+
+			entry := treeEntry{
+				mode: modeDirectory,
+				name: dirEntry.Name(),
+				hash: string(treeHash),
+			}
+			entries = append(entries, entry)
+			size += len(treeHash)
+		} else {
+			content, err := os.ReadFile(filepath.Join(dir, dirEntry.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("error reading file: %w", err)
+			}
+			_, fileHash, fileSize := hashObject("blob", content)
+
+			entry := treeEntry{
+				mode: modeRegularFile,
+				name: dirEntry.Name(),
+				hash: string(fileHash),
+			}
+			entries = append(entries, entry)
+			size += fileSize
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].name < entries[j].name
+	})
+
+	object := fmt.Sprintf("tree %d\x00", size)
+	for _, entry := range entries {
+		object += string(entry.Hash())
+	}
+	sh := sha1.New()
+	io.WriteString(sh, object)
+
+	return sh.Sum(nil), nil
+}
+
 func entryType(mode treeEntryMode) string {
 	switch mode {
 	case modeDirectory:
@@ -171,6 +253,16 @@ func entryType(mode treeEntryMode) string {
 	default:
 		return "blob"
 	}
+}
+
+func hashObject(objType string, content []byte) (string, []byte, int) {
+	size := len(content)
+	object := fmt.Sprintf("%s %d\x00%s", objType, size, content)
+
+	sha := sha1.New()
+	io.WriteString(sha, object)
+
+	return object, sha.Sum(nil), size
 }
 
 func readGitObject(objHash string) ([]byte, error) {
