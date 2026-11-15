@@ -82,13 +82,10 @@ type treeEntry struct {
 	hash string
 }
 
-func (t treeEntry) Hash() (string, []byte) {
+func (t treeEntry) Object() string {
 	object := fmt.Sprintf("%d %s\x00%s", t.mode, t.name, t.hash)
 
-	sha := sha1.New()
-	io.WriteString(sha, object)
-
-	return object, sha.Sum(nil)
+	return object
 }
 
 func LsTree(objHash string, nameOnly bool) (string, error) {
@@ -168,18 +165,12 @@ func WriteTree() (string, error) {
 		return "", fmt.Errorf("error getting the current directory: %w", err)
 	}
 
-	treeSha, object, err := treeHash(dir)
+	treeSha, _, err := treeHash(dir)
 	if err != nil {
 		return "", err
 	}
 
-	hash := hex.EncodeToString(treeSha)
-	err = writeGitObject(hash, object)
-	if err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("%x", treeSha), nil
+	return hex.EncodeToString(treeSha), nil
 }
 
 func treeHash(dir string) ([]byte, []byte, error) {
@@ -212,7 +203,11 @@ func treeHash(dir string) ([]byte, []byte, error) {
 			if err != nil {
 				return nil, nil, fmt.Errorf("error reading file: %w", err)
 			}
-			_, fileHash := hashObject("blob", content)
+
+			fileObject, fileHash := hashObject("blob", content)
+			if err := writeGitObject(hex.EncodeToString(fileHash), []byte(fileObject)); err != nil {
+				return nil, nil, err
+			}
 
 			entry := treeEntry{
 				mode: modeRegularFile,
@@ -227,18 +222,25 @@ func treeHash(dir string) ([]byte, []byte, error) {
 		return entries[i].name < entries[j].name
 	})
 
-	size := 0
-	object := ""
+	var (
+		size   = 0
+		object = ""
+	)
 	for _, entry := range entries {
-		obj, _ := entry.Hash()
+		obj := entry.Object()
 		size += len(obj)
 		object += obj
 	}
 	object = fmt.Sprintf("tree %d\x00%s", size, object)
 	sha := sha1.New()
 	io.WriteString(sha, object)
+	treeSha := sha.Sum(nil)
 
-	return sha.Sum(nil), []byte(object), nil
+	if err := writeGitObject(hex.EncodeToString(treeSha), []byte(object)); err != nil {
+		return nil, nil, err
+	}
+
+	return treeSha, []byte(object), nil
 }
 
 func entryType(mode treeEntryMode) string {
