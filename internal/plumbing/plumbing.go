@@ -257,7 +257,7 @@ func hashObject(objType string, content []byte) (string, []byte, int) {
 	sha := sha1.New()
 	io.WriteString(sha, object)
 
-	return object, sha.Sum(nil), size
+	return object, sha.Sum(nil), len(object)
 }
 
 func readGitObject(objHash string) ([]byte, error) {
