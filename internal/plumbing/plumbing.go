@@ -159,6 +159,25 @@ func parseTree(data []byte) ([]treeEntry, error) {
 	return entries, nil
 }
 
+func CommitTree(objHash, msg, parent string) (string, error) {
+	author := "John Doe <john@example.com> 1234567890 +0000"
+	object := fmt.Sprintf("tree %s\n", objHash)
+
+	if len(parent) > 0 {
+		object += fmt.Sprintf("parent %s\n", parent)
+	}
+	object += fmt.Sprintf("author %s\n", author)
+	object += fmt.Sprintf("commiter %s\n\n", author)
+	object += fmt.Sprintf("%s\n", msg)
+
+	object, hash := hashObject("commit", []byte(object))
+	if err := writeGitObject(hex.EncodeToString(hash), []byte(object)); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hash), nil
+}
+
 func WriteTree() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
